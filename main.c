@@ -1,27 +1,24 @@
 #include "main.h"
 #include "lcd_i2c.h"
-//#include "ds1307_for_stm32_hal.h"
 #include <stdio.h>
 
-// Khai báo các handle cho I2C và ADC
+// Khai bao cac handle cho I2C va ADC
 I2C_HandleTypeDef hi2c2;
 ADC_HandleTypeDef hadc1;
-RTC_HandleTypeDef hrtc;
-#define MAX_SOIL_MOISTURE 60
-// Kh?i t?o c?u trúc cho LCD
+// Cai dat nguong do am
+#define nguong_doam 60
+// Khoi tao cau truc cho LCD
 LCD_I2C_HandleTypeDef lcd;
 
-uint16_t soilMoisture = 0;  // Bi?n luu giá tr? d? ?m d?t
-uint8_t pumpState = 0;      // Tr?ng thái bom nu?c
-uint8_t systemActive = 0;   // Tr?ng thái ho?t d?ng h? th?ng
+uint16_t doam_value_adc = 0;  // Bien luu gia tri do am dat
+uint8_t hethonghd = 0;   // Trang thai hoat dong he thong
 
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_ADC1_Init(void);
 static void MX_I2C2_Init(void);
-static void MX_RTC_Init(void);
-void Display_Time_And_Soil_LCD(/*uint8_t hour, uint8_t minute, uint8_t second,*/ uint8_t soilMoisturePercentage);
-uint16_t Read_Soil_Moisture(void);
+void hienthi_doam_LCD(uint8_t doam_value_result);
+uint16_t doc_doam_adc(void);
 void Handle_Buttons(void);
 void batcoi(void);
 void hienthi(void);
@@ -33,42 +30,33 @@ int main(void)
     MX_GPIO_Init();
     MX_ADC1_Init();
     MX_I2C2_Init();
-    MX_RTC_Init();
-    // Kh?i t?o LCD
+    // Khoi tao LCD
     lcd_i2c_init(&lcd, &hi2c2, 16, 2, 0x4E);
-
-    // Kh?i t?o DS1307
-   // DS1307_Init(&hi2c1);
 
     while (1)
     {
         Handle_Buttons();
   
-        if (!systemActive) {
+        if (!hethonghd ){
             HAL_Delay(500);
             continue;
        }
 				hienthi();
 
-      /*  uint8_t hour = DS1307_GetHour();
-        uint8_t minute = DS1307_GetMinute();
-        uint8_t second = DS1307_GetSecond(); */
-
-        
-//        // Ði?u khi?n bom d?a trên d? ?m
+      
       
 //   batcoi();
  
     }
-}
+}// relay dieu khien coi muc thap
 void batcoi(void)
 	{
-		soilMoisture = Read_Soil_Moisture();
-        uint8_t soilMoisturePercentage = (100 - ((soilMoisture *100)/ 4095) );
-	 if (soilMoisturePercentage < MAX_SOIL_MOISTURE) 
-		 {HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15, 1); // B?t bom nu?c
+		doam_value_adc = Read_Soil_Moisture();
+        uint8_t doam_value_result = (100 - ((doam_value_adc *100)/ 4095) );
+	 if (doam_value_result < nguong_doam) 
+		 {HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15, 0); // bat coi
 			 } else {
-				 HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15, 0); // Tat bom nu?c
+				 HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15, 1); // tat coi
 			 }
 	
 	
@@ -76,47 +64,43 @@ void batcoi(void)
 	}
 	void hienthi(void)
 		{
-			soilMoisture = Read_Soil_Moisture();
-        uint8_t soilMoisturePercentage = (100 - (soilMoisture*100) / 4095);
+			doam_value_adc = doc_doam_adc();
+        uint8_t doam_value_result = (100 - (doam_value_adc*100) / 4095);
    
-        Display_Time_And_Soil_LCD(/*hour, minute, second,*/ soilMoisturePercentage);
-       HAL_Delay(500);  // Delay m?i giây
-		 if (soilMoisturePercentage < MAX_SOIL_MOISTURE) {
-         HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, GPIO_PIN_RESET); // B?t bom nu?c
-				 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1, GPIO_PIN_SET); 
+        hienthi_doam_LCD( doam_value_result);
+       HAL_Delay(1000);  // Delay moi 1s
+		 if (doam_value_result < nguong_doam) {
+         HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, 0); // Bat bom nuoc
+				 HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1, 1); 
 				 HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15, 0); // Bat coi
 				  lcd_set_cursor(&lcd, 0, 0);
           lcd_send_string(&lcd,"hd");
-				   HAL_Delay(500);  // Delay m?i giây
+				   HAL_Delay(1000);  // Delay moi 1s
 				  
 				
         } else {
-          HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, GPIO_PIN_SET); // T?t bom nu?c
-					HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1, GPIO_PIN_RESET); 
+          HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, 1); // Tat bom nuoc
+					HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1, 0); 
 					HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15, 1); // Tat coi
 					 lcd_set_cursor(&lcd, 0, 0);
            lcd_send_string(&lcd, "khd");
-					  HAL_Delay(500);  // Delay m?i giây
+					  HAL_Delay(1000);  // Delay moi 1s
 				
 //				
         }
 		
 		}
-void Display_Time_And_Soil_LCD(/*uint8_t hour, uint8_t minute, uint8_t second,*/ uint8_t soilMoisturePercentage)
+void hienthi_doam_LCD( uint8_t doam_value_result)
 {
-   // char timeString[16];
-    char soilString[16];
-  //  sprintf(timeString, "Time: %02d:%02d:%02d", hour, minute, second);
-    sprintf(soilString, "Soil: %d%%", soilMoisturePercentage);
-
+  
+    char doam_String[16];
+    sprintf(doam_String, "Soil: %d%%", doam_value_result);
     lcd_clear(&lcd);
-   // lcd_set_cursor(&lcd, 0, 0);
-   // lcd_send_string(&lcd, timeString);
     lcd_set_cursor(&lcd, 0, 1);
-    lcd_send_string(&lcd, soilString);
+    lcd_send_string(&lcd, doam_String);
 }
-
-uint16_t Read_Soil_Moisture(void)
+// doc gia tri ADC tu cam bien
+uint16_t doc_doam_adc(void)
 {
     HAL_ADC_Start(&hadc1);
     if (HAL_ADC_PollForConversion(&hadc1, 100) == HAL_OK) {
@@ -126,39 +110,38 @@ uint16_t Read_Soil_Moisture(void)
 }
 
 void Handle_Buttons(void) {
-    int startButton = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_1);   // Ð?c tr?ng thái c?a nút START
-    int resetButton = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_2);   // Ð?c tr?ng thái c?a nút RESET
-    int manualButton = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_3);  // Ð?c tr?ng thái c?a nút MANUAL
+    int startButton = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_1);   // trang thai nut START
+    int resetButton = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_2);   // trang thai nut RESET
+    int manualButton = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_3);  // trang thai nut MANUAL
 
-    // N?u nút START du?c nh?n
+    // Neu nut start duoc nhan
     if (startButton == 0) {
-        systemActive = 1;  // Kích ho?t h? th?ng
-        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0, GPIO_PIN_SET);  // B?t dèn LED xanh d? báo h? th?ng dang ho?t d?ng
+        hethonghd = 1;  // Kich hoat he thong
+        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0, 1);  // Bat led xanh
         lcd_clear(&lcd);
         lcd_set_cursor(&lcd, 0, 0);
         lcd_send_string(&lcd, "Started");
-        HAL_Delay(1000);  
-			  lcd_clear(&lcd);// Hi?n th? thông báo này trong 1 giây
+        HAL_Delay(1000);  // hien thi trong bao nay trong 1s
     }
 
-    // N?u nút RESET du?c nh?n
+    // Neu nut reset duoc nhan
       else if (resetButton == 0) {
         
-        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0, GPIO_PIN_RESET);  // T?t dèn LED xanh
-       // HAL_GPIO_WritePin(GPIOB, GPIO_PIN_14, GPIO_PIN_RESET);  // T?t bom nu?c
+        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0, 0);  // Tat led xanh
+        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, 1);  // Tat bom nuoc
         lcd_clear(&lcd);
         lcd_set_cursor(&lcd, 0, 0);
         lcd_send_string(&lcd, " tat may bom");
-        HAL_Delay(1000);  // Hi?n th? thông báo này trong 1 giây
-   }
-
-    // N?u nút MANUAL du?c nh?n
+        HAL_Delay(1000);  // hien thi trong bao nay trong 1s 
+      }
+//relay muc thap
+    // Neu nut manual duoc nhan
     else if (manualButton == 0) {
-      HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3 ,GPIO_PIN_RESET);  // Kích ho?t bom nu?c ngay l?p t?c
+      HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3 ,0);  // Kich hoat bom nuoc ngay lap tuc
         lcd_clear(&lcd);
         lcd_set_cursor(&lcd, 0, 0);
         lcd_send_string(&lcd, "bat may bom");
-        HAL_Delay(1000);  // Hi?n th? thông báo này trong 1 giây
+        HAL_Delay(1000);  // hien thi trong bao nay trong 1s
     }
 }
 
